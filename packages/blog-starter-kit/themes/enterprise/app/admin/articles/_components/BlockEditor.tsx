@@ -4,20 +4,12 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { PerformanceImage } from '@/components/ui/performance-image'
 import { 
-  Type, 
-  Heading1, 
-  Heading2, 
-  Heading3, 
-  List, 
-  ListOrdered, 
-  Quote,
-  Code,
-  Image,
-  Link,
+  // Icon components for UI controls
+  Image as ImageIcon, // Renamed to avoid conflict with Next.js Image component
   Plus,
-  Trash2,
-  GripVertical
+  Trash2
 } from 'lucide-react'
 
 interface Block {
@@ -43,10 +35,35 @@ interface BlockEditorProps {
   onSlashCommand: () => void
 }
 
+// Helper function to validate image URLs
+const isValidImageUrl = (url: string): boolean => {
+  try {
+    const urlObj = new URL(url)
+    const validProtocols = ['http:', 'https:']
+    const validExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg']
+    
+    if (!validProtocols.includes(urlObj.protocol)) {
+      return false
+    }
+    
+    // Check if URL has a valid image extension or is from a known image service
+    const pathname = urlObj.pathname.toLowerCase()
+    const hasValidExtension = validExtensions.some(ext => pathname.endsWith(ext))
+    const isImageService = ['unsplash.com', 'images.unsplash.com', 'picsum.photos', 'via.placeholder.com'].some(domain => 
+      urlObj.hostname.includes(domain)
+    )
+    
+    return hasValidExtension || isImageService
+  } catch {
+    return false
+  }
+}
+
 export function BlockEditor({ blocks, onChange, onSlashCommand }: BlockEditorProps) {
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null)
   const blockRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
 
+  // Add a new block to the editor
   const addBlock = (type: Block['type'], afterId?: string) => {
     const newBlock: Block = {
       id: Math.random().toString(36).substr(2, 9),
@@ -56,15 +73,17 @@ export function BlockEditor({ blocks, onChange, onSlashCommand }: BlockEditorPro
     }
 
     if (afterId) {
+      // Insert block after the specified block
       const index = blocks.findIndex(b => b.id === afterId)
       const newBlocks = [...blocks]
       newBlocks.splice(index + 1, 0, newBlock)
       onChange(newBlocks)
     } else {
+      // Add block to the end
       onChange([...blocks, newBlock])
     }
 
-    // Focus the new block
+    // Focus the new block after it's rendered
     setTimeout(() => {
       const newBlockElement = blockRefs.current[newBlock.id]
       if (newBlockElement) {
@@ -76,6 +95,7 @@ export function BlockEditor({ blocks, onChange, onSlashCommand }: BlockEditorPro
     }, 0)
   }
 
+  // Update the content of a specific block
   const updateBlock = (id: string, content: string) => {
     const newBlocks = blocks.map(block => 
       block.id === id ? { ...block, content } : block
@@ -83,6 +103,7 @@ export function BlockEditor({ blocks, onChange, onSlashCommand }: BlockEditorPro
     onChange(newBlocks)
   }
 
+  // Remove a block from the editor
   const deleteBlock = (id: string) => {
     const newBlocks = blocks.filter(block => block.id !== id)
     onChange(newBlocks)
@@ -120,6 +141,7 @@ export function BlockEditor({ blocks, onChange, onSlashCommand }: BlockEditorPro
     }
   }
 
+  // Render the appropriate input component based on block type
   const renderBlock = (block: Block) => {
     switch (block.type) {
       case 'heading1':
@@ -192,15 +214,31 @@ export function BlockEditor({ blocks, onChange, onSlashCommand }: BlockEditorPro
               placeholder={block.placeholder}
               className="w-full bg-transparent border border-gray-300 rounded px-3 py-2 text-gray-900 placeholder-gray-400"
             />
-            {block.content && (
-              <img 
-                src={block.content} 
-                alt="Block content" 
+            {block.content && isValidImageUrl(block.content) && (
+              <PerformanceImage
+                src={block.content}
+                alt="Block content"
+                width={800}
+                height={600}
                 className="max-w-full h-auto rounded-lg"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none'
+                loading="lazy"
+                quality={85}
+                placeholder="blur"
+                blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAoDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R//2Q=="
+                enablePerformanceTracking={true}
+                showLoadingIndicator={true}
+                onError={(error) => {
+                  console.warn('Image load error:', error);
                 }}
               />
+            )}
+            {block.content && !isValidImageUrl(block.content) && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="text-yellow-800 text-sm">
+                  <p>⚠️ Please enter a valid image URL</p>
+                  <p className="text-xs mt-1">Supported formats: JPG, PNG, GIF, WebP</p>
+                </div>
+              </div>
             )}
           </div>
         )
@@ -241,7 +279,9 @@ export function BlockEditor({ blocks, onChange, onSlashCommand }: BlockEditorPro
         return (
         <div
           key={block.id}
-          ref={(el) => (blockRefs.current[block.id] = el)}
+          ref={(el) => {
+            blockRefs.current[block.id] = el
+          }}
           className={`group relative p-2 rounded-lg transition-colors ${
             isFocused ? 'bg-gray-50' : 'hover:bg-gray-50'
           }`}

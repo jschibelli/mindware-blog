@@ -1,6 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import path from 'path';
 import { Resend } from 'resend';
+import { SITE_CONFIG } from '@/config/constants';
+import { validateAndSanitizeEmail } from '@/lib/config-validation';
 
 let google: any;
 let calendar: any;
@@ -24,6 +26,47 @@ try {
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// Email validation utility (deprecated - use validateAndSanitizeEmail instead)
+function isValidEmail(email: string): boolean {
+	const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+	return emailRegex.test(email);
+}
+
+// Enhanced error handling for email sending
+async function sendConfirmationEmail(email: string, name: string, date: string, time: string) {
+	if (!isValidEmail(email)) {
+		throw new Error(`Invalid email address: ${email}`);
+	}
+
+	const contactEmail = process.env.CONTACT_EMAIL || SITE_CONFIG.EMAIL.CONTACT;
+	
+	try {
+		const result = await resend.emails.send({
+			from: `John Schibelli <${contactEmail}>`,
+			to: [email],
+			subject: 'Meeting Confirmed - John Schibelli',
+			html: `
+				<h2>Meeting Confirmed!</h2>
+				<p>Hi ${name},</p>
+				<p>Your meeting has been scheduled for:</p>
+				<p><strong>Date:</strong> ${date}</p>
+				<p><strong>Time:</strong> ${time}</p>
+				<p>Looking forward to speaking with you!</p>
+				<p>Best regards,<br>John Schibelli</p>
+			`,
+		});
+
+		if (result.error) {
+			throw new Error(`Email sending failed: ${result.error.message}`);
+		}
+
+		return result;
+	} catch (error) {
+		console.error('Email sending error:', error);
+		throw new Error(`Failed to send confirmation email: ${error instanceof Error ? error.message : 'Unknown error'}`);
+	}
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
 	if (req.method !== 'POST') {
 		return res.status(405).json({ error: 'Method not allowed' });
@@ -42,6 +85,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 	try {
 		const { name, email, timezone, startTime, endTime, meetingType, notes } = req.body;
 
+		// Validate and sanitize email address
+		const emailValidation = validateAndSanitizeEmail(email);
+		if (!emailValidation.isValid) {
+			return res.status(400).json({ 
+				error: 'Invalid email address',
+				details: emailValidation.error || 'Please provide a valid email address'
+			});
+		}
+
 		// Validate required fields
 		if (!name || !email || !timezone || !startTime || !endTime) {
 			return res.status(400).json({
@@ -49,9 +101,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 			});
 		}
 
-		// Validate email format
-		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-		if (!emailRegex.test(email)) {
+		// Input sanitization and validation
+		const sanitizedName = name.trim().replace(/[<>]/g, '');
+		const sanitizedEmail = emailValidation.email; // Use validated and sanitized email
+		const sanitizedNotes = notes ? notes.trim().replace(/[<>]/g, '') : '';
+		const sanitizedMeetingType = meetingType ? meetingType.trim().replace(/[<>]/g, '') : 'General Discussion';
+
+		// Validate name length and content
+		if (sanitizedName.length < 2 || sanitizedName.length > 100) {
+			return res.status(400).json({
+				error: 'Name must be between 2 and 100 characters',
+			});
+		}
+
+		// Validate notes length if provided
+		if (sanitizedNotes && sanitizedNotes.length > 1000) {
+			return res.status(400).json({
+				error: 'Notes must be less than 1000 characters',
+			});
+		}
+
+		// Log booking attempt for audit purposes
+		console.log('Booking attempt:', {
+			name: sanitizedName,
+			email: sanitizedEmail,
+			timezone,
+			startTime,
+			endTime,
+			meetingType: sanitizedMeetingType,
+			timestamp: new Date().toISOString()
+		});
+
+		// Validate email format (already done above, but keeping for consistency)
+		if (!isValidEmail(sanitizedEmail)) {
 			return res.status(400).json({ error: 'Invalid email format' });
 		}
 
@@ -110,10 +192,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 		// Create Google Calendar event with Meet link
 		const event = {
-			summary: `Meeting with ${name}`,
+			summary: `Meeting with ${sanitizedName}`,
 			description:
-				notes ||
-				`Meeting scheduled via website chatbot.\n\nContact: ${email}\nMeeting Type: ${meetingType || 'General Discussion'}`,
+				sanitizedNotes ||
+				`Meeting scheduled via website chatbot.\n\nContact: ${sanitizedEmail}\nMeeting Type: ${sanitizedMeetingType}`,
 			start: {
 				dateTime: start.toISOString(),
 				timeZone: timezone,
@@ -179,16 +261,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 			}
 		}
 
-		// Send confirmation email
+		// Send confirmation email with enhanced error handling and logging
 		if (process.env.RESEND_API_KEY) {
 			try {
-				await resend.emails.send({
-					from: 'John Schibelli <john@schibelli.dev>',
-					to: [email],
+				// Use already sanitized variables
+				
+				console.log(`Sending confirmation email to: ${sanitizedEmail} for meeting on ${start.toISOString()}`);
+				
+				const emailResult = await resend.emails.send({
+					from: `John Schibelli <${process.env.CONTACT_EMAIL || SITE_CONFIG.EMAIL.CONTACT}>`,
+					to: [sanitizedEmail],
 					subject: 'Meeting Confirmed - John Schibelli',
 					html: `
             <h2>Meeting Confirmed!</h2>
-            <p>Hi ${name},</p>
+            <p>Hi ${sanitizedName},</p>
             <p>Your meeting with John Schibelli has been confirmed for:</p>
             <p><strong>Date:</strong> ${start.toLocaleDateString('en-US', {
 							weekday: 'long',
@@ -205,15 +291,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 						})} (${timezone})</p>
             <p><strong>Type:</strong> ${meetingType || 'General Discussion'}</p>
             ${notes ? `<p><strong>Notes:</strong> ${notes}</p>` : ''}
-                         <p>The meeting has been added to John's calendar. If you need to reschedule, please contact John at jschibelli@gmail.com.</p>
+                         <p>The meeting has been added to John's calendar. If you need to reschedule, please contact John at ${process.env.CONTACT_EMAIL || SITE_CONFIG.EMAIL.CONTACT}.</p>
             ${meetLink ? `<p><strong>Google Meet:</strong> <a href="${meetLink}">${meetLink}</a></p>` : ''}
             <p>Looking forward to our meeting!</p>
             <p>Best regards,<br>John Schibelli</p>
           `,
 				});
 			} catch (emailError) {
-				console.error('Failed to send confirmation email:', emailError);
-				// Don't fail the booking if email fails
+				console.error('Failed to send confirmation email:', {
+					error: emailError,
+					email: sanitizedEmail,
+					meetingDate: start.toISOString(),
+					timestamp: new Date().toISOString()
+				});
+				
+				// Log specific error types for better debugging
+				if (emailError instanceof Error) {
+					console.error('Email error details:', {
+						message: emailError.message,
+						stack: emailError.stack,
+						name: emailError.name
+					});
+				}
+				
+				// Don't fail the booking if email fails, but log for monitoring
+				console.warn('Booking created successfully but email notification failed');
 			}
 		}
 
@@ -226,7 +328,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 						'Content-Type': 'application/json',
 					},
 					body: JSON.stringify({
-						text: `📅 New meeting booked!\n\n*${name}* (${email})\n📅 ${start.toLocaleDateString()}\n⏰ ${start.toLocaleTimeString()} - ${end.toLocaleTimeString()}\n💬 ${meetingType || 'General Discussion'}\n${notes ? `📝 ${notes}` : ''}`,
+						text: `📅 New meeting booked!\n\n*${sanitizedName}* (${sanitizedEmail})\n📅 ${start.toLocaleDateString()}\n⏰ ${start.toLocaleTimeString()} - ${end.toLocaleTimeString()}\n💬 ${sanitizedMeetingType}\n${sanitizedNotes ? `📝 ${sanitizedNotes}` : ''}`,
 					}),
 				});
 			} catch (slackError) {

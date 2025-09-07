@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 import { motion } from 'framer-motion';
 import {
 	BarChart3,
@@ -16,6 +15,7 @@ import {
 } from 'lucide-react';
 import React from 'react';
 import { Badge, Card, CardContent, CardHeader, CardTitle } from '../components/ui';
+import { PerformanceImage } from '../components/ui/performance-image';
 
 export interface ParsedBlock {
 	type: string;
@@ -285,16 +285,140 @@ const KPIsGrid: React.FC<{ headers: string[]; rows: string[][] }> = ({ headers, 
 	);
 };
 
+// Helper function to validate image URLs
+const isValidImageUrl = (url: string): boolean => {
+	try {
+		const urlObj = new URL(url);
+		const validProtocols = ['http:', 'https:'];
+		const validExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'];
+		
+		if (!validProtocols.includes(urlObj.protocol)) {
+			return false;
+		}
+		
+		// Check if URL has a valid image extension or is from a known image service
+		const pathname = urlObj.pathname.toLowerCase();
+		const hasValidExtension = validExtensions.some(ext => pathname.endsWith(ext));
+		const isImageService = ['unsplash.com', 'images.unsplash.com', 'picsum.photos', 'via.placeholder.com'].some(domain => 
+			urlObj.hostname.includes(domain)
+		);
+		
+		return hasValidExtension || isImageService;
+	} catch {
+		return false;
+	}
+};
+
+// Reusable error state component for better UX
+const ImageErrorState: React.FC<{
+	onRetry?: () => void;
+	message?: string;
+	showRetry?: boolean;
+}> = ({ onRetry, message = "Failed to load image", showRetry = true }) => (
+	<div className="h-48 w-full bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center p-4">
+		<div className="text-gray-500 text-sm text-center">
+			<p>⚠️ {message}</p>
+			{showRetry && onRetry && (
+				<button
+					onClick={onRetry}
+					className="mt-2 px-3 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+				>
+					Retry
+				</button>
+			)}
+		</div>
+	</div>
+);
+
+// Default placeholder image component
+const PlaceholderImage: React.FC<{ alt?: string }> = ({ alt = "Gallery image" }) => (
+	<div className="h-48 w-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+		<div className="text-gray-400 text-center">
+			<svg className="w-12 h-12 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
+				<path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+			</svg>
+			<p className="text-xs">{alt}</p>
+		</div>
+	</div>
+);
+
 const Gallery: React.FC<{ headers: string[]; rows: string[][] }> = ({ headers, rows }) => {
 	return (
 		<div className="my-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
 			{rows.map((row, index) => {
 				const [url, alt] = row;
+				const isValidUrl = isValidImageUrl(url);
+				
+				// Component for individual gallery item with retry functionality
+				const GalleryItem: React.FC = () => {
+					const [hasError, setHasError] = React.useState(false);
+					const [retryCount, setRetryCount] = React.useState(0);
+					const [isLoading, setIsLoading] = React.useState(true);
+					
+					const handleRetry = () => {
+						setHasError(false);
+						setRetryCount(prev => prev + 1);
+						setIsLoading(true);
+					};
+					
+					const handleError = () => {
+						setHasError(true);
+						setIsLoading(false);
+					};
+					
+					const handleLoad = () => {
+						setIsLoading(false);
+						setHasError(false);
+					};
+					
+					// Cleanup function for resource management
+					React.useEffect(() => {
+						return () => {
+							// Cleanup any pending image loads
+							setIsLoading(false);
+						};
+					}, []);
+					
+					if (!isValidUrl) {
+						return <ImageErrorState message="Invalid image URL" showRetry={false} />;
+					}
+					
+					if (hasError) {
+						return <ImageErrorState onRetry={handleRetry} message="Failed to load image" />;
+					}
+					
+					return (
+						<div className="relative">
+							{isLoading && (
+								<div className="absolute inset-0 bg-gray-100 animate-pulse rounded-lg flex items-center justify-center">
+									<div className="text-gray-400 text-sm">Loading...</div>
+								</div>
+							)}
+							<PerformanceImage
+								key={retryCount} // Force re-render on retry
+								src={url} 
+								alt={alt || 'Gallery image'} 
+								width={400} 
+								height={192} 
+								className="h-48 w-full object-cover" 
+								loading="lazy"
+								quality={85}
+								placeholder="blur"
+								blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAAIAAoDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAhEAACAQMDBQAAAAAAAAAAAAABAgMABAUGIWGRkqGx0f/EABUBAQEAAAAAAAAAAAAAAAAAAAMF/8QAGhEAAgIDAAAAAAAAAAAAAAAAAAECEgMRkf/aAAwDAQACEQMRAD8AltJagyeH0AthI5xdrLcNM91BF5pX2HaH9bcfaSXWGaRmknyJckliyjqTzSlT54b6bk+h0R//2Q=="
+								onError={handleError}
+								onLoad={handleLoad}
+								enablePerformanceTracking={true}
+								showLoadingIndicator={true}
+							/>
+						</div>
+					);
+				};
+				
 				return (
 					<Card key={index} className="overflow-hidden">
-						<img src={url} alt={alt} className="h-48 w-full object-cover" />
+						<GalleryItem />
 						<CardContent className="p-4">
-							<p className="text-muted-foreground text-sm">{alt}</p>
+							<p className="text-muted-foreground text-sm">{alt || 'Gallery image'}</p>
 						</CardContent>
 					</Card>
 				);

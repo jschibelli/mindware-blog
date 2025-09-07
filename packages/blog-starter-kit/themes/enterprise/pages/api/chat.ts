@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import OpenAI from 'openai';
 import resumeData from '../../data/resume.json';
 import { CHAT_TOOLS, executeTool } from './chat/tools';
+import { SITE_CONFIG } from '@/config/constants';
 
 // Enhanced fallback articles with better categorization
 const fallbackArticles = [
@@ -40,7 +41,7 @@ const responseTemplates = {
 			{ label: 'Email', url: 'mailto:jschibelli@gmail.com', icon: '📧' },
 			{ label: 'LinkedIn', url: 'https://linkedin.com/in/johnschibelli', icon: '💼' },
 			{ label: 'GitHub', url: 'https://github.com/jschibelli', icon: '🐙' },
-			{ label: 'Website', url: 'https://schibelli.dev', icon: '🌐' },
+			{ label: 'Website', url: 'https://johnschibelli.dev', icon: '🌐' },
 		],
 	},
 	skills: {
@@ -469,8 +470,8 @@ KEY INFORMATION ABOUT JOHN:
 - Name: John Schibelli
 - Title: Senior Front-End Developer
 - Location: Towaco, NJ
-- Email: jschibelli@gmail.com
-- Website: https://schibelli.dev
+- Email: ${process.env.CONTACT_EMAIL || SITE_CONFIG.EMAIL.CONTACT}
+- Website: https://johnschibelli.dev
 - LinkedIn: https://linkedin.com/in/johnschibelli
 - GitHub: https://github.com/jschibelli
 

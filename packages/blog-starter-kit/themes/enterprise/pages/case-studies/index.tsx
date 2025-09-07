@@ -1,5 +1,6 @@
 import { GetServerSideProps } from 'next';
 import Head from 'next/head';
+import Image from 'next/image';
 import Link from 'next/link';
 import { AppProvider } from '../../components/contexts/appContext';
 import Chatbot from '../../components/features/chatbot/Chatbot';
@@ -123,10 +124,13 @@ function FeaturedCaseStudyCard({ caseStudy }: { caseStudy: CaseStudy }) {
       <CardContent className="p-0">
         {caseStudy.coverImage && (
           <div className="relative h-48 overflow-hidden rounded-t-lg">
-            <img
+            <Image
               src={caseStudy.coverImage}
-              alt={caseStudy.title}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              alt={`${caseStudy.title} - Case study cover image`}
+              fill
+              className="object-cover group-hover:scale-105 transition-transform duration-300"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              priority={caseStudy.featured}
             />
             <div className="absolute top-3 right-3">
               <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
@@ -205,10 +209,13 @@ function CaseStudyCard({ caseStudy }: { caseStudy: CaseStudy }) {
       <CardContent className="p-0">
         {caseStudy.coverImage && (
           <div className="relative h-40 overflow-hidden rounded-t-lg">
-            <img
+            <Image
               src={caseStudy.coverImage}
-              alt={caseStudy.title}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              alt={`${caseStudy.title} - Case study cover image`}
+              fill
+              className="object-cover group-hover:scale-105 transition-transform duration-300"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              loading="lazy"
             />
           </div>
         )}

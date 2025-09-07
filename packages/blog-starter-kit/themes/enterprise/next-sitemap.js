@@ -1,6 +1,9 @@
+// Use environment variable or fallback domain
+const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'johnschibelli.dev';
+
 /** @type {import('next-sitemap').IConfig} */
 module.exports = {
-  siteUrl: process.env.NEXT_PUBLIC_SITE_URL || 'https://johnschibelli.com',
+  siteUrl: process.env.NEXT_PUBLIC_SITE_URL || `https://${DOMAIN}`,
   generateRobotsTxt: true,
   generateIndexSitemap: false,
   exclude: [
@@ -29,7 +32,7 @@ module.exports = {
       },
     ],
     additionalSitemaps: [
-      'https://johnschibelli.com/sitemap.xml',
+      `${process.env.NEXT_PUBLIC_SITE_URL || `https://${DOMAIN}`}/sitemap.xml`,
     ],
   },
   transform: async (config, path) => {
